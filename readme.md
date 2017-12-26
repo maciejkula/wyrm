@@ -3,7 +3,7 @@
 [![Crates.io badge](https://img.shields.io/crates/v/wyrm.svg)](https://crates.io/crates/wyrm)
 [![Docs.rs badge](https://docs.rs/wyrm/badge.svg)](https://docs.rs/wyrm/0.1.0/wyrm/)
 
-A backward-mode, define-by-run, low-overhead autodifferentiation library.
+A reverse mode, define-by-run, low-overhead autodifferentiation library.
 
 ## Features
 
