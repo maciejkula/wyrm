@@ -55,7 +55,7 @@ for _ in 0..num_epochs {
     loss.backward(1.0);
 
     optimizer.step();
-    optimizer.zero_gradients();
+    loss.zero_gradient();
 }
 ```
 
@@ -90,7 +90,7 @@ let num_epochs = 10;
                loss.backward(1.0);
 
                optimizer.step();
-               optimizer.zero_gradients();
+               loss.zero_gradient();
            }
        });
 ```
