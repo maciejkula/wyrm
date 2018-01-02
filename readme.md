@@ -94,3 +94,13 @@ let num_epochs = 10;
            }
        });
 ```
+
+## BLAS support
+You should enable BLAS support to get (much) better performance out of matrix-multiplication-heavy
+workloads. To do so, add the following to your `Cargo.toml`:
+
+```text
+ndarray = { version = "0.11.0", features = ["blas", "serde-1"] }
+blas-src = { version = "0.1.2", default-features = false, features = ["openblas"] }
+openblas-src = { version = "0.5.6", default-features = false, features = ["cblas"] }
+```
