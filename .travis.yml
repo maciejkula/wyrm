@@ -1,7 +1,12 @@
 language: rust
 rust:
-  - nightly
+  - stable
 
 before_install:
   - sudo apt-get -qq update
   - sudo apt-get install -y gfortran
+
+script:
+  - cargo build --verbose --all
+  - cargo test --verbose --all
+  - cargo test --verbose --all --release
