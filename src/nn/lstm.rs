@@ -64,17 +64,10 @@ pub struct Parameters {
     input_dim: usize,
     hidden_dim: usize,
 
-    forget_weights: Arc<nodes::HogwildParameter>,
-    forget_biases: Arc<nodes::HogwildParameter>,
-
-    update_gate_weights: Arc<nodes::HogwildParameter>,
-    update_gate_biases: Arc<nodes::HogwildParameter>,
-
-    update_value_weights: Arc<nodes::HogwildParameter>,
-    update_value_biases: Arc<nodes::HogwildParameter>,
-
-    output_gate_weights: Arc<nodes::HogwildParameter>,
-    output_gate_biases: Arc<nodes::HogwildParameter>,
+    /// The weights and the biases as stacked side-by-side:
+    /// forget -> update gate -> update value -> output gate
+    weights: Arc<nodes::HogwildParameter>,
+    biases: Arc<nodes::HogwildParameter>,
 }
 
 impl Clone for Parameters {
@@ -87,17 +80,8 @@ impl Clone for Parameters {
             input_dim: self.input_dim,
             hidden_dim: self.hidden_dim,
 
-            forget_weights: Arc::new(self.forget_weights.as_ref().clone()),
-            forget_biases: Arc::new(self.forget_biases.as_ref().clone()),
-
-            update_gate_weights: Arc::new(self.update_gate_weights.as_ref().clone()),
-            update_gate_biases: Arc::new(self.update_gate_biases.as_ref().clone()),
-
-            update_value_weights: Arc::new(self.update_gate_weights.as_ref().clone()),
-            update_value_biases: Arc::new(self.update_value_biases.as_ref().clone()),
-
-            output_gate_weights: Arc::new(self.output_gate_weights.as_ref().clone()),
-            output_gate_biases: Arc::new(self.output_gate_biases.as_ref().clone()),
+            weights: Arc::new(self.weights.as_ref().clone()),
+            biases: Arc::new(self.biases.as_ref().clone()),
         }
     }
 }
@@ -112,46 +96,19 @@ impl Parameters {
             input_dim: input_dim,
             hidden_dim: hidden_dim,
 
-            forget_weights: Arc::new(HogwildParameter::new(uniform(
+            weights: Arc::new(HogwildParameter::new(uniform(
                 input_dim + hidden_dim,
-                hidden_dim,
+                hidden_dim * 4,
                 min,
                 max,
                 rng,
             ))),
-            forget_biases: Arc::new(HogwildParameter::new(uniform(1, hidden_dim, min, max, rng))),
-
-            update_gate_weights: Arc::new(HogwildParameter::new(uniform(
-                input_dim + hidden_dim,
-                hidden_dim,
+            biases: Arc::new(HogwildParameter::new(uniform(
+                1,
+                hidden_dim * 4,
                 min,
                 max,
                 rng,
-            ))),
-            update_gate_biases: Arc::new(HogwildParameter::new(uniform(
-                1, hidden_dim, min, max, rng,
-            ))),
-
-            update_value_weights: Arc::new(HogwildParameter::new(uniform(
-                input_dim + hidden_dim,
-                hidden_dim,
-                min,
-                max,
-                rng,
-            ))),
-            update_value_biases: Arc::new(HogwildParameter::new(uniform(
-                1, hidden_dim, min, max, rng,
-            ))),
-
-            output_gate_weights: Arc::new(HogwildParameter::new(uniform(
-                input_dim + hidden_dim,
-                hidden_dim,
-                min,
-                max,
-                rng,
-            ))),
-            output_gate_biases: Arc::new(HogwildParameter::new(uniform(
-                1, hidden_dim, min, max, rng,
             ))),
         }
     }
@@ -167,17 +124,8 @@ impl Parameters {
             input_dim: self.input_dim,
             hidden_dim: self.hidden_dim,
 
-            forget_weights: ParameterNode::shared(self.forget_weights.clone()),
-            forget_biases: ParameterNode::shared(self.forget_biases.clone()),
-
-            update_gate_weights: ParameterNode::shared(self.update_gate_weights.clone()),
-            update_gate_biases: ParameterNode::shared(self.update_gate_biases.clone()),
-
-            update_value_weights: ParameterNode::shared(self.update_value_weights.clone()),
-            update_value_biases: ParameterNode::shared(self.update_value_biases.clone()),
-
-            output_gate_weights: ParameterNode::shared(self.output_gate_weights.clone()),
-            output_gate_biases: ParameterNode::shared(self.output_gate_biases.clone()),
+            weights: ParameterNode::shared(self.weights.clone()),
+            biases: ParameterNode::shared(self.biases.clone()),
         }
     }
 }
@@ -188,17 +136,8 @@ pub struct Cell {
     input_dim: usize,
     hidden_dim: usize,
 
-    forget_weights: Variable<ParameterNode>,
-    forget_biases: Variable<ParameterNode>,
-
-    update_gate_weights: Variable<ParameterNode>,
-    update_gate_biases: Variable<ParameterNode>,
-
-    update_value_weights: Variable<ParameterNode>,
-    update_value_biases: Variable<ParameterNode>,
-
-    output_gate_weights: Variable<ParameterNode>,
-    output_gate_biases: Variable<ParameterNode>,
+    weights: Variable<ParameterNode>,
+    biases: Variable<ParameterNode>,
 }
 
 impl Cell {
@@ -224,26 +163,28 @@ impl Cell {
 
         let stacked_input = hidden.stack(&input, ndarray::Axis(1));
 
+        let sgemm_result = stacked_input.dot(&self.weights) + self.biases.clone();
+
+        let forget_gate = sgemm_result.slice(s![.., 0..self.hidden_dim]).sigmoid();
+        let update_gate = sgemm_result
+            .slice(s![.., self.hidden_dim..(self.hidden_dim * 2)])
+            .sigmoid();
+        let update_value = sgemm_result
+            .slice(s![.., (self.hidden_dim * 2)..(self.hidden_dim * 3)])
+            .tanh();
+        let output_gate = sgemm_result
+            .slice(s![.., (self.hidden_dim * 3)..])
+            .sigmoid();
+
         // Forget part of the cell state
-        let forget_gate =
-            (stacked_input.dot(&self.forget_weights) + self.forget_biases.clone()).sigmoid();
         let cell = forget_gate * cell;
 
         // Update the cell state with new input
-        let update_gate = (stacked_input.dot(&self.update_gate_weights)
-            + self.update_gate_biases.clone())
-            .sigmoid();
-        let update_value = (stacked_input.dot(&self.update_value_weights)
-            + self.update_value_biases.clone())
-            .tanh();
         let update = update_gate * update_value;
         let cell = cell + update;
 
         // Emit a hidden state
         let output_value = cell.tanh();
-        let output_gate = (stacked_input.dot(&self.output_gate_weights)
-            + self.output_gate_biases.clone())
-            .sigmoid();
         let hidden = output_gate * output_value;
 
         (cell.boxed(), hidden.boxed())
