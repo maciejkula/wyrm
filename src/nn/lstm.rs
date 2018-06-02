@@ -404,7 +404,7 @@ mod tests {
         let mut state = lstm.forward((state, hidden), input.clone());
 
         // Construct a deep RNN.
-        for _ in 0..200 {
+        for _ in 0..2 {
             state = lstm.forward(state.clone(), input.clone());
         }
 
@@ -414,7 +414,8 @@ mod tests {
         // Run as usual.
         hidden.forward();
         hidden.backward(1.0);
-        hidden.zero_gradient();
+
+        println!("{:#?}", ::telemetry::get_telemetry());
     }
 
     fn predicted_label(softmax_output: &Arr) -> usize {

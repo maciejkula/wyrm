@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 #[macro_use]
 extern crate criterion;
+extern crate rand;
 extern crate rayon;
 extern crate wyrm;
 
@@ -9,9 +10,9 @@ use rayon::prelude::*;
 
 use criterion::Criterion;
 
-use wyrm::nn::lstm;
+use wyrm::nn::lstm::*;
 use wyrm::nn::xavier_normal;
-use wyrm::{DataInput, HogwildParameter, ParameterNode, SGD};
+use wyrm::*;
 
 fn bench_node_reuse(c: &mut Criterion) {
     c.bench_function("node_reuse", |b| {
@@ -187,60 +188,81 @@ fn pi_digits(num: usize) -> Vec<usize> {
         .collect()
 }
 
-fn bench_lstm(c: &mut Criterion) {
-    c.bench_function("bench_lstm", |b| {
-        let sequence_length = 4;
-        let num_digits = 10;
-        let input_dim = 16;
-        let hidden_dim = 32;
+fn bench_lstm_simple_shallow(c: &mut Criterion) {
+    c.bench_function("bench_lstm_simple_shallow", |b| {
+        let input_dim = 10;
+        let hidden_dim = 5;
 
-        let lstm_params = lstm::Parameters::new(input_dim, hidden_dim);
-        let lstm = lstm_params.build();
+        // Initialize the parameters.
+        let lstm_params = Parameters::new(input_dim, hidden_dim, &mut rand::thread_rng());
+        let lstm = lstm_params.build_cell();
 
-        let final_layer = wyrm::ParameterNode::new(xavier_normal(hidden_dim, num_digits));
-        let embeddings = wyrm::ParameterNode::new(xavier_normal(num_digits, input_dim));
-        let y = wyrm::IndexInputNode::new(&vec![0]);
+        // Initialize the cell state and hidden state.
+        let state = InputNode::new(Arr::zeros((1, hidden_dim)));
+        let hidden = InputNode::new(Arr::zeros((1, hidden_dim)));
 
-        let inputs: Vec<_> = (0..sequence_length)
-            .map(|_| wyrm::IndexInputNode::new(&vec![0]))
-            .collect();
-        let embeddings: Vec<_> = inputs
-            .iter()
-            .map(|input| embeddings.index(&input))
-            .collect();
+        // Construct the input node.
+        let input = InputNode::new(xavier_normal(1, input_dim));
 
-        let hidden_states = lstm.forward(&embeddings);
-        let hidden = hidden_states.last().unwrap();
+        // The forward method outputs a tuple of (cell_state, hidden_state).
+        let mut state = lstm.forward((state, hidden), input.clone());
 
-        let prediction = hidden.dot(&final_layer);
-        let mut loss = wyrm::nn::losses::sparse_categorical_crossentropy(&prediction, &y);
-        let mut optimizer = SGD::new(0.05, loss.parameters());
+        // Construct a shallow RNN.
+        for _ in 0..10 {
+            state = lstm.forward(state.clone(), input.clone());
+        }
 
-        let digits = pi_digits(100);
+        // Unpack the cell and hidden state.
+        let (_, mut hidden) = state;
 
         b.iter(|| {
-            for i in 0..(digits.len() - sequence_length - 1) {
-                let digit_chunk = &digits[i..(i + sequence_length + 1)];
-                if digit_chunk.len() < sequence_length + 1 {
-                    break;
-                }
-
-                for (&digit, input) in digit_chunk[..digit_chunk.len() - 1].iter().zip(&inputs) {
-                    input.set_value(digit);
-                }
-
-                let target_digit = *digit_chunk.last().unwrap();
-                y.set_value(target_digit);
-
-                loss.forward();
-                loss.backward(1.0);
-
-                optimizer.step();
-                loss.zero_gradient();
+            for _ in 0..20 {
+                hidden.forward();
+                hidden.backward(1.0);
             }
         })
     });
 }
 
-criterion_group!(benches, bench_node_reuse, bench_matrix_multiply, bench_lstm);
+fn bench_lstm_simple_deep(c: &mut Criterion) {
+    c.bench_function("bench_lstm_simple_deep", |b| {
+        let input_dim = 10;
+        let hidden_dim = 5;
+
+        // Initialize the parameters.
+        let lstm_params = Parameters::new(input_dim, hidden_dim, &mut rand::thread_rng());
+        let lstm = lstm_params.build_cell();
+
+        // Initialize the cell state and hidden state.
+        let state = InputNode::new(Arr::zeros((1, hidden_dim)));
+        let hidden = InputNode::new(Arr::zeros((1, hidden_dim)));
+
+        // Construct the input node.
+        let input = InputNode::new(xavier_normal(1, input_dim));
+
+        // The forward method outputs a tuple of (cell_state, hidden_state).
+        let mut state = lstm.forward((state, hidden), input.clone());
+
+        // Construct a shallow RNN.
+        for _ in 0..200 {
+            state = lstm.forward(state.clone(), input.clone());
+        }
+
+        // Unpack the cell and hidden state.
+        let (_, mut hidden) = state;
+
+        b.iter(|| {
+            hidden.forward();
+            hidden.backward(1.0);
+        })
+    });
+}
+
+criterion_group!(
+    benches,
+    bench_node_reuse,
+    bench_matrix_multiply,
+    bench_lstm_simple_shallow,
+    bench_lstm_simple_deep
+);
 criterion_main!(benches);

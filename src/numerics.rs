@@ -218,9 +218,9 @@ pub fn mat_mul<S1, S2, S3>(
                 &mut out.subview_mut(Axis(0), 0),
             );
         }
-        _ => {
+        _ => measure!("matmul", {
             general_mat_mul(alpha, lhs, rhs, beta, out);
-        }
+        }),
     }
 }
 

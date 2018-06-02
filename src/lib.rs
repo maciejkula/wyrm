@@ -153,6 +153,9 @@ extern crate itertools;
 
 extern crate hibitset;
 
+#[macro_use]
+extern crate lazy_static;
+
 /// Alias for a `f32` `ndarray` matrix.
 pub type Arr = ndarray::Array2<f32>;
 
@@ -162,6 +165,9 @@ use std::ops::{Add, Deref, Div, Mul, Neg, Sub};
 use std::rc::Rc;
 
 use itertools::Itertools;
+
+#[macro_use]
+pub mod telemetry;
 
 mod fast_approx;
 pub mod nn;
@@ -247,7 +253,7 @@ where
     /// Run the forward pass through the subgraph terminating at this node,
     /// recursing through the ancestor nodes.
     pub fn forward(&self) {
-        self.node.forward()
+        self.node.forward();
     }
     /// Clear the graph caches. Must be called whenever inputs change and [backward] is not
     /// called.

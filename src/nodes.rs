@@ -382,58 +382,64 @@ where
 {
     type Value = Arr;
     type InputGradient = Arr;
+
     fn forward(&self) {
-        if self.counter.forward() == ForwardAction::Cached {
-            return;
-        }
-
-        self.lhs.forward();
-        self.rhs.forward();
-
-        let lhs_value = self.lhs.value();
-        let rhs_value = self.rhs.value();
-
-        let mut self_value = self.value.borrow_mut();
-
-        match self.axis {
-            // Vertically
-            ndarray::Axis(0) => {
-                row_wise_stack(self_value.deref_mut(), lhs_value.deref(), rhs_value.deref())
+        measure!("concatenate::forward", {
+            if self.counter.forward() == ForwardAction::Cached {
+                return;
             }
-            // Horizontally
-            ndarray::Axis(1) => {
-                column_wise_stack(self_value.deref_mut(), lhs_value.deref(), rhs_value.deref())
-            }
-            // Not allowed
-            _ => panic!("Stacking tensors not allowed."),
-        }
-    }
-    fn backward(&self, gradient: &Ref<Self::InputGradient>) {
-        {
-            let mut lhs_grad = self.lhs_gradient.borrow_mut();
-            let mut rhs_grad = self.rhs_gradient.borrow_mut();
+
+            self.lhs.forward();
+            self.rhs.forward();
+
+            let lhs_value = self.lhs.value();
+            let rhs_value = self.rhs.value();
+
+            let mut self_value = self.value.borrow_mut();
 
             match self.axis {
-                ndarray::Axis(0) => row_wise_stack_gradient(
-                    gradient,
-                    lhs_grad.deref_mut(),
-                    rhs_grad.deref_mut(),
-                    &self.counter.backward(),
-                ),
-                ndarray::Axis(1) => column_wise_stack_gradient(
-                    gradient,
-                    lhs_grad.deref_mut(),
-                    rhs_grad.deref_mut(),
-                    &self.counter.backward(),
-                ),
+                // Vertically
+                ndarray::Axis(0) => {
+                    row_wise_stack(self_value.deref_mut(), lhs_value.deref(), rhs_value.deref())
+                }
+                // Horizontally
+                ndarray::Axis(1) => {
+                    column_wise_stack(self_value.deref_mut(), lhs_value.deref(), rhs_value.deref())
+                }
+                // Not allowed
                 _ => panic!("Stacking tensors not allowed."),
             }
-        }
+        })
+    }
 
-        if self.counter.recurse_backward() {
-            self.lhs.backward(&self.lhs_gradient.borrow());
-            self.rhs.backward(&self.rhs_gradient.borrow());
-        }
+    fn backward(&self, gradient: &Ref<Self::InputGradient>) {
+        measure!("concatenate::backward", {
+            {
+                let mut lhs_grad = self.lhs_gradient.borrow_mut();
+                let mut rhs_grad = self.rhs_gradient.borrow_mut();
+
+                match self.axis {
+                    ndarray::Axis(0) => row_wise_stack_gradient(
+                        gradient,
+                        lhs_grad.deref_mut(),
+                        rhs_grad.deref_mut(),
+                        &self.counter.backward(),
+                    ),
+                    ndarray::Axis(1) => column_wise_stack_gradient(
+                        gradient,
+                        lhs_grad.deref_mut(),
+                        rhs_grad.deref_mut(),
+                        &self.counter.backward(),
+                    ),
+                    _ => panic!("Stacking tensors not allowed."),
+                }
+            }
+
+            if self.counter.recurse_backward() {
+                self.lhs.backward(&self.lhs_gradient.borrow());
+                self.rhs.backward(&self.rhs_gradient.borrow());
+            }
+        })
     }
 
     fn value(&self) -> Bor<Self::Value> {
@@ -1254,63 +1260,67 @@ where
     type InputGradient = Arr;
 
     fn forward(&self) {
-        if self.counter.forward() == ForwardAction::Cached {
-            return;
-        }
+        measure!("dot::forward", {
+            if self.counter.forward() == ForwardAction::Cached {
+                return;
+            }
 
-        self.lhs.forward();
-        self.rhs.forward();
+            self.lhs.forward();
+            self.rhs.forward();
 
-        numerics::mat_mul(
-            1.0,
-            self.lhs.value().deref(),
-            self.rhs.value().deref(),
-            0.0,
-            self.value.borrow_mut().deref_mut(),
-        );
+            numerics::mat_mul(
+                1.0,
+                self.lhs.value().deref(),
+                self.rhs.value().deref(),
+                0.0,
+                self.value.borrow_mut().deref_mut(),
+            );
+        })
     }
 
     fn backward(&self, gradient: &Ref<Self::InputGradient>) {
-        match self.counter.backward() {
-            BackwardAction::Set => {
-                self.gradient.borrow_mut().slice_assign(gradient.deref());
-            }
-            BackwardAction::Increment => {
-                self.gradient
-                    .borrow_mut()
-                    .slice_add_assign(gradient.deref());
-            }
-        }
-
-        if self.counter.recurse_backward() {
-            {
-                let rhs_value = self.rhs.value();
-                let lhs_value = self.lhs.value();
-
-                let gradient = self.gradient.borrow();
-
-                let mut lhs_gradient = self.lhs_gradient.borrow_mut();
-                let mut rhs_gradient = self.rhs_gradient.borrow_mut();
-
-                numerics::mat_mul(
-                    1.0,
-                    gradient.deref(),
-                    &rhs_value.t(),
-                    0.0,
-                    &mut lhs_gradient,
-                );
-                numerics::mat_mul(
-                    1.0,
-                    &lhs_value.t(),
-                    gradient.deref(),
-                    0.0,
-                    &mut rhs_gradient,
-                );
+        measure!("dot::backward", {
+            match self.counter.backward() {
+                BackwardAction::Set => {
+                    self.gradient.borrow_mut().slice_assign(gradient.deref());
+                }
+                BackwardAction::Increment => {
+                    self.gradient
+                        .borrow_mut()
+                        .slice_add_assign(gradient.deref());
+                }
             }
 
-            self.lhs.backward(&self.lhs_gradient.borrow());
-            self.rhs.backward(&self.rhs_gradient.borrow());
-        }
+            if self.counter.recurse_backward() {
+                {
+                    let rhs_value = self.rhs.value();
+                    let lhs_value = self.lhs.value();
+
+                    let gradient = self.gradient.borrow();
+
+                    let mut lhs_gradient = self.lhs_gradient.borrow_mut();
+                    let mut rhs_gradient = self.rhs_gradient.borrow_mut();
+
+                    numerics::mat_mul(
+                        1.0,
+                        gradient.deref(),
+                        &rhs_value.t(),
+                        0.0,
+                        &mut lhs_gradient,
+                    );
+                    numerics::mat_mul(
+                        1.0,
+                        &lhs_value.t(),
+                        gradient.deref(),
+                        0.0,
+                        &mut rhs_gradient,
+                    );
+                }
+
+                self.lhs.backward(&self.lhs_gradient.borrow());
+                self.rhs.backward(&self.rhs_gradient.borrow());
+            }
+        })
     }
 
     fn value(&self) -> Bor<Self::Value> {
@@ -1723,6 +1733,7 @@ where
 {
     type Value = Arr;
     type InputGradient = Arr;
+
     fn forward(&self) {
         if self.counter.forward() == ForwardAction::Cached {
             return;
@@ -1809,6 +1820,7 @@ where
 {
     type Value = Arr;
     type InputGradient = Arr;
+
     fn forward(&self) {
         if self.counter.forward() == ForwardAction::Cached {
             return;
