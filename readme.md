@@ -52,8 +52,7 @@ for _ in 0..num_epochs {
     loss.forward();
     loss.backward(1.0);
 
-    optimizer.step();
-    loss.zero_gradient();
+    optimizer.step(loss.parameters());
 }
 ```
 
@@ -87,8 +86,7 @@ let num_epochs = 10;
                loss.forward();
                loss.backward(1.0);
 
-               optimizer.step();
-               loss.zero_gradient();
+               optimizer.step(loss.parameters());
            }
        });
 ```
