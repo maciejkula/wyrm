@@ -1,4 +1,4 @@
-# Wyrm
+# wyrm
 
 [![Crates.io badge](https://img.shields.io/crates/v/wyrm.svg)](https://crates.io/crates/wyrm)
 [![Docs.rs badge](https://docs.rs/wyrm/badge.svg)](https://docs.rs/wyrm/)
@@ -38,7 +38,7 @@ To optimize the parameters, create an optimizer object and
 go through several epochs of learning:
 
 ```rust
-let mut optimizer = SGD::new(0.1, vec![slope.clone(), intercept.clone()]);
+let mut optimizer = SGD::new().learning_rate(0.1);
 
 for _ in 0..num_epochs {
     let x_value: f32 = rand::random();
@@ -74,7 +74,7 @@ let num_epochs = 10;
            let y_hat = slope.clone() * x.clone() + intercept.clone();
            let mut loss = (y.clone() - y_hat).square();
 
-           let mut optimizer = SGD::new(0.1, vec![slope.clone(), intercept.clone()]);
+           let optimizer = SGD::new().learning_rate(0.1);
 
            for _ in 0..num_epochs {
                let x_value: f32 = rand::random();
@@ -91,12 +91,19 @@ let num_epochs = 10;
        });
 ```
 
-## BLAS support
+### BLAS support
 You should enable BLAS support to get (much) better performance out of matrix-multiplication-heavy
 workloads. To do so, add the following to your `Cargo.toml`:
 
-```text
+```
 ndarray = { version = "0.11.0", features = ["blas", "serde-1"] }
 blas-src = { version = "0.1.2", default-features = false, features = ["openblas"] }
 openblas-src = { version = "0.5.6", default-features = false, features = ["cblas"] }
 ```
+
+### Fast numerics
+
+Enable the `fast-math` option to use fast approximations to transcendental functions.
+This should give substantial speed gains in networks that are `exp`, `ln`, or `tanh`-heavy.
+
+License: MIT
