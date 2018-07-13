@@ -97,8 +97,8 @@ workloads. To do so, add the following to your `Cargo.toml`:
 
 ```
 ndarray = { version = "0.11.0", features = ["blas", "serde-1"] }
-blas-src = { version = "0.1.2", default-features = false, features = ["openblas"] }
-openblas-src = { version = "0.5.6", default-features = false, features = ["cblas"] }
+blas-src = { version = "0.2.0", default-features = false, features = ["openblas"] }
+openblas-src = { version = "0.6.0", default-features = false, features = ["cblas"] }
 ```
 
 ### Fast numerics
